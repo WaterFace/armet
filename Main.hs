@@ -3,13 +3,17 @@ module Main where
 import qualified Vector as V
 
 import FRP.Helm
---import Control.Applicative
 import qualified FRP.Helm.Keyboard as Keyboard
 import qualified FRP.Helm.Window as Window
 import qualified FRP.Helm.Time as Time
 import qualified Control.Arrow as A
 
-data Player = Player {
+data GameState = GameState {
+    _player :: Actor,
+    _enemies :: [Actor]
+}
+
+data Actor = Actor {
     pos          :: (Double, Double),
     vel          :: (Double, Double),
     frictionMult :: Double,
@@ -19,22 +23,26 @@ data Player = Player {
 deltaTime :: Signal Double
 deltaTime = (/ Time.second) <~ Time.fps 120.0
 
-step :: (Double, Double) -> Player -> Player
-step dv player@Player{pos=p,vel=v,frictionMult=f,accel=a} = player {
+stepPlayer :: (Double, Double) -> Actor -> Actor
+stepPlayer dv actor@Actor{pos=p,vel=v,frictionMult=f,accel=a} = actor {
     pos = p `V.add` v,
     vel = V.scale f $ v `V.add` (a `V.scale` dv)
 }
 
-render :: (Int, Int) -> Player -> Element
-render (w, h) (Player { pos = (mx, my) }) =
-  centeredCollage w h [move (mx, my) $ filled white $ square 100]
+stepGame :: (Double, Double) -> GameState -> GameState
+stepGame input GameState { _player = p, _enemies = es} = GameState { _player=stepPlayer input p, _enemies=map id es }
+
+render :: (Int, Int) -> GameState -> Element
+render (w, h) GameState { _player = Actor { pos = (mx, my) } } =
+  centeredCollage w h [move (mx, my) $ filled green $ square 100]
 
 main :: IO ()
 main = run config $ render <~ Window.dimensions ~~ stepper
   where
     config = defaultConfig { windowTitle = "Armet"}
     acceleration = 10.0 :: Double
-    player = Player { pos = (0, 0), vel = (0, 0), frictionMult = 0.95, accel = acceleration }
-    stepper = foldp step player (V.scale <~ deltaTime ~~ doubleKeyboard)
+    player = Actor { pos = (0, 0), vel = (0, 0), frictionMult = 0.95, accel = acceleration }
+    state = GameState { _player = player, _enemies = []}
+    stepper = foldp stepGame state (V.scale <~ deltaTime ~~ doubleKeyboard)
     both f = f A.*** f
     doubleKeyboard = both fromIntegral <~ Keyboard.wasd
