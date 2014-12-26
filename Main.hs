@@ -9,7 +9,6 @@ import qualified FRP.Helm.Window as Window
 import qualified FRP.Helm.Time as Time
 import qualified Control.Arrow as A
 
-data State = State { mx :: Double, my :: Double }
 data Player = Player {
     pos          :: (Double, Double),
     vel          :: (Double, Double),
