@@ -20,6 +20,9 @@ data Actor = Actor {
     accel        :: Double
 }
 
+playerSprite :: Form
+playerSprite = sprite 64 64 (0, 0) "player.png"
+
 deltaTime :: Signal Double
 deltaTime = (/ Time.second) <~ Time.fps 120.0
 
@@ -34,7 +37,8 @@ stepGame input GameState { _player = p, _enemies = es} = GameState { _player=ste
 
 render :: (Int, Int) -> GameState -> Element
 render (w, h) GameState { _player = Actor { pos = (mx, my) } } =
-  centeredCollage w h [move (mx, my) $ filled green $ square 100]
+  centeredCollage w h [move (mx, my) $ playerSprite]
+  --filled green $ square 100
 
 main :: IO ()
 main = run config $ render <~ Window.dimensions ~~ stepper
