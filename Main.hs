@@ -9,12 +9,12 @@ import qualified FRP.Helm.Time as Time
 import qualified FRP.Helm.Text as Text
 import qualified Control.Arrow as A
 
-data GameState = GameState {
-    _player :: Actor,
-    _enemies :: [Actor]
-}
+--data GameState = GameState {
+--    _player :: Player,
+--    _enemies :: [Player]
+--}
 
-data Actor = Actor {
+data Player = Player {
     pos          :: (Double, Double),
     vel          :: (Double, Double),
     frictionMult :: Double,
@@ -41,8 +41,8 @@ playerSprite = sprite 32 64 (0, 0) "player.png"
 deltaTime :: Signal Double
 deltaTime = (/ Time.second) <~ Time.fps 120.0
 
-stepPlayer :: (Double, Double) -> Actor -> Actor
-stepPlayer dv actor@Actor{pos=p,vel=v,frictionMult=f,accel=a,gravity=g,box=b@Bbox{topLeft=(x,y),width=w,height=h}} = actor {
+stepPlayer :: (Double, Double) -> Player -> Player
+stepPlayer dv player@Player{pos=p,vel=v,frictionMult=f,accel=a,gravity=g,box=b@Bbox{topLeft=(x,y),width=w,height=h}} = Player {
     pos = clampedPos,
     vel = (V.scale f $ v `V.add` (a `V.scale` dv)) `V.add` (if y+h < 480 then g else V.zero),
     box = b { topLeft = clampedPos }
@@ -50,22 +50,23 @@ stepPlayer dv actor@Actor{pos=p,vel=v,frictionMult=f,accel=a,gravity=g,box=b@Bbo
   where
     newPos = p `V.add` v
     clampedPos = if snd newPos > 480-h then (fst newPos, 480-h) else newPos
-    
-stepGame :: (Double, Double) -> GameState -> GameState
-stepGame input GameState { _player = p, _enemies = es} = GameState { _player=stepPlayer input p, _enemies=map id es }
 
-render :: (Int, Int) -> GameState -> Element
-render (w, h) GameState { _player = Actor { pos = p@(mx, my), box = b } } =
-  collage w h [move (mx, my) $ playerSprite,
-               move (200, 50) $ toForm $ Text.text (Text.color white (Text.toText $ show p)),
-               move (mx, my) $ boxToForm b]
-  --filled green $ square 100
+--render :: (Int, Int) -> GameState -> Element
+--render (w, h) GameState { _player = Player { pos = p@(mx, my), box = b } } =
+--  collage w h [move (mx, my) $ playerSprite,
+--               move (200, 50) $ toForm $ Text.text (Text.color white (Text.toText $ show p)),
+--               move (mx, my) $ boxToForm b]
+--  --filled green $ square 100
+
+renderFunction :: (Int, Int) -> (Double -> Double) -> Element
+renderFunction (w, h) f = collage w h . return . move (0, fromIntegral (h `div` 2)) $ traced line . path $ fmap (A.second f) [(fromIntegral x, fromIntegral x) | x <- [1..w]]
+  where line = solid red
 
 main :: IO ()
-main = run config $ render <~ Window.dimensions ~~ stepper
+main = run config $ renderFunction <~ Window.dimensions ~~ constant ((*100) . sin . (/10))
   where
     config = defaultConfig { windowDimensions = (640, 480), windowTitle = "Armet" }
-    player = Actor {
+    player = Player {
         pos = (0, 0),
         vel = (0, 0),
         frictionMult = 0.95,
@@ -77,7 +78,6 @@ main = run config $ render <~ Window.dimensions ~~ stepper
             height = 64.0
         }
     }
-    state = GameState { _player = player, _enemies = []}
-    stepper = foldp stepGame state (V.scale <~ deltaTime ~~ doubleKeyboard)
+    stepper = foldp stepPlayer player (V.scale <~ deltaTime ~~ doubleKeyboard)
     both f = f A.*** f
     doubleKeyboard = both fromIntegral <~ Keyboard.wasd
