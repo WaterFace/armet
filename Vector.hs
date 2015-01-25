@@ -16,6 +16,3 @@ instance (Vector a, Vector b) => Vector (a, b) where
     scale d = (scale d) *** (scale d)
     add (a, b) (a', b') = (add a a', add b b')
     zero = (zero, zero)
-
---instance Integral a => Vector a where
---    scale d = toIntegral
