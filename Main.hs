@@ -4,80 +4,124 @@ import qualified Vector as V
 
 import FRP.Helm
 import qualified FRP.Helm.Keyboard as Keyboard
-import qualified FRP.Helm.Window as Window
-import qualified FRP.Helm.Time as Time
-import qualified FRP.Helm.Text as Text
-import qualified Control.Arrow as A
+import qualified FRP.Helm.Mouse    as Mouse
+import qualified FRP.Helm.Window   as Window
+import qualified FRP.Helm.Time     as Time
+import qualified FRP.Helm.Text     as Text
+import qualified FRP.Helm.Graphics as Graphics
+import qualified FRP.Helm.Color    as Color
 
---data GameState = GameState {
---    _player :: Player,
---    _enemies :: [Player]
---}
+import qualified Control.Arrow as A
+import Control.Applicative
+
+debug :: Bool
+debug = False
+
+{-
+    Player Input
+-}
+
+data PlayerInput = PlayerInput {
+    movement  :: (Double, Double),
+    mousePos  :: (Int, Int),
+    mouseDown :: Bool 
+} deriving Show
+
+type Input = (Time, PlayerInput)
+
+playerInput :: Signal PlayerInput
+playerInput = PlayerInput <$> doubleWasd
+                          <*> Mouse.position
+                          <*> Mouse.isDown
+  where doubleWasd = both fromIntegral <$> Keyboard.wasd
+        both f = f A.*** f
+
+{-
+    Game State
+-}
 
 data Player = Player {
-    pos          :: (Double, Double),
-    vel          :: (Double, Double),
-    frictionMult :: Double,
-    accel        :: Double,
-    gravity      :: (Double, Double),
-    box          :: Bbox
+    pos :: (Double, Double),
+    dir :: Double,
+    speed :: Double,
+    spr :: Form
 }
 
-data Bbox = Bbox {
-    topLeft :: (Double, Double),
-    width   :: Double,
-    height  :: Double
+data GameState = GameState {
+    player :: Player
 }
 
-boxToForm :: Bbox -> Form
-boxToForm Bbox {width = w, height = h} = move (w / 2, h / 2) $ outlined (dashed white) $ rect w h
+defaultGame :: GameState
+defaultGame = GameState {
+    player = Player {
+        pos = (100, 100),
+        dir = 0,
+        speed = 200,
+        spr = Graphics.sprite 32 32 (0, 0) "sheet.png"
+    }
+}
 
-winDim :: Num a => (a, a)
-winDim = (640, 480)
 
-playerSprite :: Form
-playerSprite = sprite 32 64 (0, 0) "player.png"
+{-
+    Stepping
+-}
 
-deltaTime :: Signal Double
-deltaTime = (/ Time.second) <~ Time.fps 120.0
-
-stepPlayer :: (Double, Double) -> Player -> Player
-stepPlayer dv player@Player{pos=p,vel=v,frictionMult=f,accel=a,gravity=g,box=b@Bbox{topLeft=(x,y),width=w,height=h}} = Player {
-    pos = clampedPos,
-    vel = (V.scale f $ v `V.add` (a `V.scale` dv)) `V.add` (if y+h < 480 then g else V.zero),
-    box = b { topLeft = clampedPos }
+stepPlayer :: Input -> Player -> Player
+stepPlayer (dt, uin) p = p {
+    pos =  pos p `V.add` (V.scale (dt * speed p) $ (normalize . movement) uin),
+    dir = atan2 dy dx
 }
   where
-    newPos = p `V.add` v
-    clampedPos = if snd newPos > 480-h then (fst newPos, 480-h) else newPos
+    dy = snd (pos p) - (fromIntegral $ snd (mousePos uin))
+    dx = (fromIntegral $ fst (mousePos uin)) - fst (pos p)
+    normalize (0, 0) = (0, 0)
+    normalize a@(x, y) = (x/pythag a, y/pythag a)
+    pythag (a, b) = sqrt $ a*a + b*b
 
---render :: (Int, Int) -> GameState -> Element
---render (w, h) GameState { _player = Player { pos = p@(mx, my), box = b } } =
---  collage w h [move (mx, my) $ playerSprite,
---               move (200, 50) $ toForm $ Text.text (Text.color white (Text.toText $ show p)),
---               move (mx, my) $ boxToForm b]
---  --filled green $ square 100
+stepGame :: Input -> GameState -> GameState
+stepGame i state = state {
+    player = stepPlayer i $ player state
+} 
 
-renderFunction :: (Int, Int) -> (Double -> Double) -> Element
-renderFunction (w, h) f = collage w h . return . move (0, fromIntegral (h `div` 2)) $ traced line . path $ fmap (A.second f) [(fromIntegral x, fromIntegral x) | x <- [1..w]]
-  where line = solid red
+{-
+    Display
+-}
+
+debugForm :: Form -> Form
+debugForm f = if debug then f else Graphics.blank
+
+playerToForm :: Player -> Form
+playerToForm p = group [ move (pos p) $ rotateWithOrigin origin theta $ spr p
+                       , debugForm $ (move (pos p) . filled red) (circle 1)]
+  where
+    theta = (2*pi) - (dir p)
+    origin = (w/2, h/2)
+    (w, h) = (32, 32)
+
+-- given origin is relative to the form's origin
+rotateWithOrigin :: (Double, Double) -> Double -> Form -> Form
+rotateWithOrigin (ox, oy) theta = move ((-ox) * (cos theta - sin theta), (-oy) * (cos theta + sin theta)) . rotate theta
+
+display :: (Int, Int) -> GameState -> Element
+display (w, h) state = collage w h [p]
+  where 
+    p = playerToForm $ player state
+
+{-
+    Main
+-}
+
+delta :: Signal Time
+delta = (/Time.second) <$> Time.fps 60.0
+
+gameState :: Signal GameState
+gameState = foldp stepGame defaultGame input
+
+input :: Signal Input
+input = (,) <$> delta <*> playerInput
 
 main :: IO ()
-main = run config $ renderFunction <~ Window.dimensions ~~ constant ((*100) . sin . (/10))
-  where
-    config = defaultConfig { windowDimensions = (640, 480), windowTitle = "Armet" }
-    player = Player {
-        pos = (0, 0),
-        vel = (0, 0),
-        frictionMult = 0.95,
-        accel = 10.0,
-        gravity = (0, 0.3),
-        box = Bbox { 
-            topLeft = (0, 0),
-            width = 32.0,
-            height = 64.0
-        }
-    }
-    stepper = foldp stepPlayer player (V.scale <~ deltaTime ~~ doubleKeyboard)
-    both f = f A.*** f
-    doubleKeyboard = both fromIntegral <~ Keyboard.wasd
+main = do
+    run config $ display <$> Window.dimensions <*> gameState
+  where 
+    config = defaultConfig { windowTitle = "Armet" }
