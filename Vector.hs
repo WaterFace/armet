@@ -2,8 +2,10 @@ module Vector where
 
 import Control.Arrow
 
+type Scalar = Double
+
 class Vector a where
-    scale :: Double -> a -> a
+    scale :: Scalar -> a -> a
     add :: a -> a -> a
     zero :: a
 
