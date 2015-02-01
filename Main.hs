@@ -2,8 +2,6 @@ module Main where
 
 import qualified Vector as V
 
-import qualified Graphics.Rendering.Cairo.Matrix as CM 
-
 import FRP.Helm
 import qualified FRP.Helm.Keyboard as Keyboard
 import qualified FRP.Helm.Mouse    as Mouse
@@ -13,7 +11,7 @@ import qualified FRP.Helm.Text     as Text
 import qualified FRP.Helm.Graphics as Graphics
 import qualified FRP.Helm.Color    as Color
 
-import qualified Control.Arrow as A
+import Control.Arrow
 import Control.Applicative
 
 debug :: Bool
@@ -36,7 +34,7 @@ playerInput = PlayerInput <$> doubleWasd
                           <*> Mouse.position
                           <*> Mouse.isDown
   where doubleWasd = both fromIntegral <$> Keyboard.wasd
-        both f = f A.*** f
+        both f = f *** f
 
 {-
     Game State
@@ -58,7 +56,7 @@ defaultGame = GameState {
     player = Player {
         pos = (100, 100),
         dir = 0,
-        speed = 200,
+        speed = 300,
         spr = Sprite {
             width = w,
             height = h,
@@ -114,7 +112,7 @@ playerToForm p = group [ rotateAboutCenter origin size theta . move (pos p) . dr
   where
     theta = (2*pi) - (dir p)
     origin = (w/2, h/2)
-    size@(w, h) = (fromIntegral A.*** fromIntegral) . (width A.&&& height) $ spr p
+    size@(w, h) = (fromIntegral *** fromIntegral) . (width &&& height) $ spr p
 
 rotateAboutCenter :: (Double, Double) -> (Double, Double) -> Double -> Form -> Form
 rotateAboutCenter (x, y) (w, h) theta = move (dx + (w/2), dy + (h/2)) . rotate theta
@@ -124,15 +122,28 @@ rotateAboutCenter (x, y) (w, h) theta = move (dx + (w/2), dy + (h/2)) . rotate t
     ul_y2 = y + ((h/2)*cos theta) + ((w/2)*sin theta)
     (dx, dy) = (ul_x1 - ul_x2, ul_y1 - ul_y2)
     
+background :: Form
+background = group [move (fromIntegral (x * w), fromIntegral (y * h)) img | x <- [0..nwide], y <- [0..nhigh]]
+  where
+    nwide = (w_window `div` w) + 1
+    nhigh = (h_window `div` h) + 1
+    img = Graphics.sprite w h (0, 0) "darkPurple.png"
+    (w, h) = (256, 256)
+    (w_window, h_window) = windowDimensions config
 
 display :: (Int, Int) -> GameState -> Element
-display (w, h) state = collage w h [p]
+display (w, h) state = collage w h [background, p]
   where 
     p = playerToForm $ player state
 
 {-
     Main
 -}
+
+config :: EngineConfig
+config = defaultConfig { windowTitle = "Armet"
+                       , windowDimensions = (800, 600)
+                       }
 
 delta :: Signal Time
 delta = (/Time.second) <$> Time.fps 60.0
@@ -146,5 +157,3 @@ input = (,) <$> delta <*> playerInput
 main :: IO ()
 main = do
     run config $ display <$> Window.dimensions <*> gameState
-  where 
-    config = defaultConfig { windowTitle = "Armet" }
