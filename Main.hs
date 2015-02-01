@@ -2,6 +2,8 @@ module Main where
 
 import qualified Vector as V
 
+import qualified Graphics.Rendering.Cairo.Matrix as CM 
+
 import FRP.Helm
 import qualified FRP.Helm.Keyboard as Keyboard
 import qualified FRP.Helm.Mouse    as Mouse
@@ -44,7 +46,7 @@ data Player = Player {
     pos :: (Double, Double),
     dir :: Double,
     speed :: Double,
-    spr :: Form
+    spr :: Sprite
 }
 
 data GameState = GameState {
@@ -57,9 +59,15 @@ defaultGame = GameState {
         pos = (100, 100),
         dir = 0,
         speed = 200,
-        spr = Graphics.sprite 32 32 (0, 0) "sheet.png"
+        spr = Sprite {
+            width = w,
+            height = h,
+            _sprite = Graphics.sprite w h (0, 0) "playerShip1_red.png"
+        }
     }
 }
+  where
+    (w, h) = (75, 99)
 
 
 {-
@@ -87,20 +95,35 @@ stepGame i state = state {
     Display
 -}
 
+data Sprite = Sprite {
+    width :: Int,
+    height :: Int,
+    _sprite :: Form
+}
+
+drawSprite :: Sprite -> Form
+drawSprite = _sprite
+
 debugForm :: Form -> Form
 debugForm f = if debug then f else Graphics.blank
 
 playerToForm :: Player -> Form
-playerToForm p = group [ move (pos p) $ rotateWithOrigin origin theta $ spr p
-                       , debugForm $ (move (pos p) . filled red) (circle 1)]
+playerToForm p = group [ rotateAboutCenter origin size theta . move (pos p) . drawSprite $ (spr p)
+                       , debugForm $ move (pos p) (filled red $ circle 1)
+                       ]
   where
     theta = (2*pi) - (dir p)
     origin = (w/2, h/2)
-    (w, h) = (32, 32)
+    size@(w, h) = (fromIntegral A.*** fromIntegral) . (width A.&&& height) $ spr p
 
--- given origin is relative to the form's origin
-rotateWithOrigin :: (Double, Double) -> Double -> Form -> Form
-rotateWithOrigin (ox, oy) theta = move ((-ox) * (cos theta - sin theta), (-oy) * (cos theta + sin theta)) . rotate theta
+rotateAboutCenter :: (Double, Double) -> (Double, Double) -> Double -> Form -> Form
+rotateAboutCenter (x, y) (w, h) theta = move (dx + (w/2), dy + (h/2)) . rotate theta
+  where
+    (ul_x1, ul_y1) = (x-(w/2), y-(h/2))
+    ul_x2 = x + ((w/2)*cos theta) - ((h/2)*sin theta)
+    ul_y2 = y + ((h/2)*cos theta) + ((w/2)*sin theta)
+    (dx, dy) = (ul_x1 - ul_x2, ul_y1 - ul_y2)
+    
 
 display :: (Int, Int) -> GameState -> Element
 display (w, h) state = collage w h [p]
